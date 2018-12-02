@@ -1,0 +1,138 @@
+# jenkins
+#kind: PersistentVolumeClaim
+#apiVersion: v1
+#metadata:
+#  name: jenkins-home
+#  annotations:
+#    volume.beta.kubernetes.io/storage-class: "managed-nfs-storage"
+#spec:
+#  storageClassName: managed-nfs-storage
+#  accessModes:
+#    - ReadWriteMany
+#  resources:
+#    requests:
+#      storage: 1G
+---
+apiVersion: apps/v1beta1
+kind: StatefulSet
+metadata:
+  name: jenkins
+  labels:
+    name: jenkins
+spec:
+  serviceName: jenkins
+  replicas: 1
+  updateStrategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      name: jenkins
+      labels:
+        name: jenkins
+    spec:
+      terminationGracePeriodSeconds: 10
+      serviceAccountName: default
+      containers:
+        - name: jenkins
+          image: jenkins/jenkins:alpine
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+            - containerPort: 50000
+          resources:
+            limits:
+              cpu: 2
+              memory: 2Gi
+            requests:
+              cpu: 1
+              memory: 1000Mi
+          env:
+            - name: LIMITS_MEMORY
+              valueFrom:
+                resourceFieldRef:
+                  resource: limits.memory
+                  divisor: 1Mi
+            - name: JAVA_OPTS
+              # value: -XX:+UnlockExperimentalVMOptions -XX:+UseCGroupMemoryLimitForHeap -XX:MaxRAMFraction=1 -XshowSettings:vm -Dhudson.slaves.NodeProvisioner.initialDelay=0 -Dhudson.slaves.NodeProvisioner.MARGIN=50 -Dhudson.slaves.NodeProvisioner.MARGIN0=0.85
+              value: -Xmx$(LIMITS_MEMORY)m -XshowSettings:vm -Dhudson.slaves.NodeProvisioner.initialDelay=0 -Dhudson.slaves.NodeProvisioner.MARGIN=50 -Dhudson.slaves.NodeProvisioner.MARGIN0=0.85
+          volumeMounts:
+            - name: jenkins-home
+              mountPath: /var/jenkins_home
+          livenessProbe:
+            httpGet:
+              path: /login
+              port: 8080
+            initialDelaySeconds: 120
+            timeoutSeconds: 10
+            failureThreshold: 20 # ~2 minutes
+          readinessProbe:
+            httpGet:
+              path: /login
+              port: 8080
+            initialDelaySeconds: 120
+            timeoutSeconds: 10
+            failureThreshold: 20 # ~2 minutes
+      securityContext:
+        fsGroup: 1000
+      volumes:
+        - name: jenkins-home
+  volumeClaimTemplates:
+  - metadata:
+      name: jenkins-home
+      annotations:
+        volume.beta.kubernetes.io/storage-class: managed-nfs-storage
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+         storage: 10Gi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jenkins
+  annotations:
+    # ensure the client ip is propagated to avoid the invalid crumb issue (k8s <1.7)
+    # service.beta.kubernetes.io/external-traffic: OnlyLocal
+spec:
+  type: NodePort 
+  selector:
+    name: jenkins
+  # k8s 1.7+
+  externalTrafficPolicy: Local
+  ports:
+    -
+      name: http
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+    -
+      name: agent
+      port: 50000
+      protocol: TCP
+
+---
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: jenkins
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    # "413 Request Entity Too Large" uploading plugins, increase client_max_body_size
+    nginx.ingress.kubernetes.io/proxy-body-size: 50m
+    nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
+    # For nginx-ingress controller < 0.9.0.beta-18
+    ingress.kubernetes.io/ssl-redirect: "true"
+    # "413 Request Entity Too Large" uploading plugins, increase client_max_body_size
+    ingress.kubernetes.io/proxy-body-size: 50m
+    ingress.kubernetes.io/proxy-request-buffering: "off"
+spec:
+  rules:
+  - http:
+      paths:
+      - path: /
+        backend:
+          serviceName: jenkins
+          servicePort: 8080
+    host: ci.example.com
