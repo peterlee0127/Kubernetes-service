@@ -1,0 +1,110 @@
+---
+apiVersion: apps/v1beta1
+kind: StatefulSet
+metadata:
+  name: kibana
+  labels:
+    name: kibana
+spec:
+  serviceName: kibana
+  replicas: 1
+  updateStrategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      name: kibana
+      labels:
+        name: kibana
+    spec:
+      terminationGracePeriodSeconds: 10
+      serviceAccountName: default
+      containers:
+        - name: kibana
+          image: docker.elastic.co/kibana/kibana:6.5.4
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 5601
+          resources:
+            limits:
+              cpu: 1.5
+              memory: 2Gi
+            requests:
+              cpu: 1
+              memory: 1000Mi
+          volumeMounts:
+            - name: kibana-home
+              mountPath: /usr/share/kibana/config
+            - name: kibana-data
+              mountPath: /usr/share/kibana/data
+          env:
+            - name: ELASTICSEARCH_URL
+              value: http://elasticsearch-service:9200
+      securityContext:
+        fsGroup: 1000
+      volumes:
+        - name: kibana-home
+  volumeClaimTemplates:
+  - metadata:
+      name: kibana-home
+      annotations:
+        volume.beta.kubernetes.io/storage-class: managed-nfs-storage
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+         storage: 10Gi
+  - metadata:
+      name: kibana-data
+      annotations:
+        volume.beta.kubernetes.io/storage-class: managed-nfs-storage
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+         storage: 10Gi
+
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kibana-service
+  annotations:
+    # ensure the client ip is propagated to avoid the invalid crumb issue (k8s <1.7)
+    # service.beta.kubernetes.io/external-traffic: OnlyLocal
+spec:
+  type: NodePort
+  selector:
+    name: kibana
+  # k8s 1.7+
+  externalTrafficPolicy: Local
+  ports:
+    -
+      name: http
+      port: 5601
+      targetPort: 5601
+      protocol: TCP
+---
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: kibana
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    # "413 Request Entity Too Large" uploading plugins, increase client_max_body_size
+    nginx.ingress.kubernetes.io/proxy-body-size: 50m
+    nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
+    # For nginx-ingress controller < 0.9.0.beta-18
+    ingress.kubernetes.io/ssl-redirect: "true"
+    # "413 Request Entity Too Large" uploading plugins, increase client_max_body_size
+    ingress.kubernetes.io/proxy-body-size: 50m
+    ingress.kubernetes.io/proxy-request-buffering: "off"
+spec:
+  rules:
+  - http:
+      paths:
+      - path: /
+        backend:
+          serviceName: kibana
+          servicePort: 5601
+    host: kibana.example.com
