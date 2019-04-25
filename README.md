@@ -1,13 +1,18 @@
 # Kubernetes-service
 My Kubernetes-service
 
+```shell
+sudo kubeadm init --apiserver-advertise-address 192.168.2.104 --pod-network-cidr 10.32.0.0/16 --service-cidr 10.32.0.0/12 --ignore-preflight-errors all
+```
+
 
 
 ```
 ├── LICENSE
 ├── README.md
 ├── elk
-│   ├── elasticsearch.yml
+│   ├── elasticsearch-deploy.yml
+│   ├── kibana-deploy.yml
 │   └── kibana.yml
 ├── flannel
 │   └── kube-flannel.yml
