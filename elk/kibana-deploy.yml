@@ -20,7 +20,7 @@ spec:
       serviceAccountName: default
       containers:
         - name: kibana
-          image: docker.elastic.co/kibana/kibana:7.0.0
+          image: docker.elastic.co/kibana/kibana:7.1.0
           imagePullPolicy: Always
           ports:
             - containerPort: 5601
