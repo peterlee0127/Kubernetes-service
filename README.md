@@ -5,6 +5,29 @@ My Kubernetes-service
 sudo kubeadm init --apiserver-advertise-address 192.168.2.104 --pod-network-cidr 10.32.0.0/16 --service-cidr 10.32.0.0/12 --ignore-preflight-errors all
 ```
 
+## Manual set Kubernetes each node ip
+
+```
+# example of config, do this at every nodes.
+/var/lib/kubelet/kubeadm-flags.env
+KUBELET_KUBEADM_ARGS=--cgroup-driver=systemd --network-plugin=cni --pod-infra-container-image=k8s.gcr.io/pause:3.1 --node-ip=192.168.2.xxx
+
+# restart kubelet
+$ sudo systemctl restart kubelet
+```
+
+
+
+## Disable Swap
+
+```
+$ sudo swapoff -a
+$ sudo vim /etc/fstab 
+# disable swap partition.
+```
+
+
+
 
 
 ```
